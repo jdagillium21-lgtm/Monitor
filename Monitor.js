@@ -1,66 +1,62 @@
 import fetch from "node-fetch";
 
-const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
+const URLS = process.env.URLS.split("|");
 const PUSHOVER_USER = process.env.PUSHOVER_USER;
+const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
 
-const urls = process.env.URLS.split("|");
-
-const lastState = {};
+let lastStatus = {};
 
 async function sendAlert(message) {
   await fetch("https://api.pushover.net/1/messages.json", {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
       token: PUSHOVER_TOKEN,
       user: PUSHOVER_USER,
       message,
-      title: "Pokemon Monitor"
+      title: "Pokemon Monitor",
+      priority: 1
     })
   });
 }
 
-async function checkUrl(url) {
+async function checkURL(url) {
   try {
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0"
-      }
-    });
-
+    const res = await fetch(url, { timeout: 15000 });
     const text = await res.text();
 
     const inStock =
-      text.includes("Add to Cart") &&
-      !text.includes("Sold Out") &&
-      !text.includes("Out of Stock");
+      !text.includes("Out of Stock") &&
+      !text.includes("Sold out");
 
-    if (lastState[url] === undefined) {
-      lastState[url] = inStock;
+    if (lastStatus[url] === undefined) {
+      lastStatus[url] = inStock;
       return;
     }
 
-    if (inStock && !lastState[url]) {
-      await sendAlert(`🚨 HIGH CONFIDENCE STOCK: ${url}`);
+    if (inStock && !lastStatus[url]) {
+      console.log("🔥 HIGH CONFIDENCE STOCK:", url);
+      await sendAlert("🔥 HIGH CONFIDENCE STOCK: " + url);
     }
 
-    lastState[url] = inStock;
+    lastStatus[url] = inStock;
 
   } catch (err) {
-    console.log("Error checking", url);
+    console.log("⚠️ Error checking:", url);
   }
 }
 
-async function run() {
-  console.log("High confidence monitor running...");
+async function loop() {
+  console.log("🚀 Monitor running...");
 
-  while (true) {
-    for (const url of urls) {
-      await checkUrl(url);
+  setInterval(async () => {
+    console.log("❤️ Heartbeat — monitor alive —", new Date().toLocaleTimeString());
+
+    for (const url of URLS) {
+      await checkURL(url);
     }
 
-    await new Promise(r => setTimeout(r, 15000));
-  }
+  }, 60000); // every 60 seconds
 }
 
-run();
+loop();
