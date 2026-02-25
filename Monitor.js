@@ -1,23 +1,27 @@
 import fetch from "node-fetch";
 
-// ===== CLEAN URL LOADER =====
-const URLS = (process.env.URLS || "")
+const RAW_URLS = process.env.URLS || "";
+const PUSHOVER_USER = process.env.PUSHOVER_USER;
+const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
+
+// Clean parsing (handles Render textbox formatting)
+const URLS = RAW_URLS
   .replace(/\r/g, "")
   .replace(/\n/g, "")
   .split("|")
   .map(u => u.trim())
   .filter(Boolean);
 
-console.log("🔥 URL count:", URLS.length);
-console.log("🔥 URLs loaded:", URLS);
+console.log("✅ Loaded URLs:", URLS.length);
+console.log("🧪 First URL:", URLS[0] || "none");
 
-// ===== PUSHOVER =====
-const PUSHOVER_USER = process.env.PUSHOVER_USER;
-const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
+let lastStatus = {};
 
-// ===== ALERT =====
 async function sendAlert(message) {
-  if (!PUSHOVER_USER || !PUSHOVER_TOKEN) return;
+  if (!PUSHOVER_TOKEN || !PUSHOVER_USER) {
+    console.log("⚠️ Pushover not configured");
+    return;
+  }
 
   try {
     await fetch("https://api.pushover.net/1/messages.json", {
@@ -31,59 +35,58 @@ async function sendAlert(message) {
         priority: 1
       })
     });
+
+    console.log("📲 Alert sent:", message);
   } catch (err) {
-    console.log("⚠️ Alert error:", err.message);
+    console.log("❌ Alert error:", err.message);
   }
 }
 
-// ===== CHECK URL =====
 async function checkURL(url) {
   try {
-    console.log("🔎 Checking URL:", url);
+    console.log("🔎 Checking:", url);
 
     const res = await fetch(url, {
       headers: {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "text/html"
-      }
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "Accept": "text/html,application/xhtml+xml",
+        "Cache-Control": "no-cache"
+      },
+      timeout: 15000
     });
 
-    console.log("📡 Status:", res.status);
+    const status = res.status;
+    console.log("📡 Status:", status);
 
-    const text = await res.text();
+    // Only alert if status changes
+    if (lastStatus[url] !== status) {
+      lastStatus[url] = status;
 
-    const inStock = !text.toLowerCase().includes("sold out");
-
-    if (inStock) {
-      console.log("🟢 Possible stock detected:", url);
-      await sendAlert(`🟢 Stock possible: ${url}`);
+      if (status === 200) {
+        await sendAlert(`🟢 OK: ${url}`);
+      } else {
+        await sendAlert(`⚠️ Status ${status}: ${url}`);
+      }
     }
 
   } catch (err) {
-    console.log("❌ URL error:", url, err.message);
+    console.log("❌ Check failed:", err.message);
+
+    if (lastStatus[url] !== "error") {
+      lastStatus[url] = "error";
+      await sendAlert(`❌ Error checking: ${url}`);
+    }
   }
 }
 
-// ===== LOOP =====
 async function loop() {
-  console.log("🚀 Monitor running...");
+  console.log("❤️ Heartbeat — monitor alive —", new Date().toLocaleTimeString());
 
-  while (true) {
-    console.log("❤️ Heartbeat — monitor alive:", new Date().toLocaleTimeString());
-
-    if (!URLS.length) {
-      console.log("⚠️ No URLs detected — check Render environment variable");
-    }
-
-    for (const url of URLS) {
-      await checkURL(url);
-    }
-
-    const delay = 20000 + Math.random() * 5000;
-    console.log(`⏳ Sleeping ${(delay / 1000).toFixed(1)} seconds\n`);
-
-    await new Promise(r => setTimeout(r, delay));
+  for (const url of URLS) {
+    await checkURL(url);
   }
+
+  setTimeout(loop, 20000); // 20 seconds
 }
 
 loop();
