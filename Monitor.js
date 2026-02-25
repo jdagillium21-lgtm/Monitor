@@ -1,14 +1,16 @@
-const fetch = require("node-fetch");
+import fetch from "node-fetch";
 
 const PUSHOVER_USER = process.env.PUSHOVER_USER;
 const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
 const URLS = process.env.URLS.split("|");
 
+const CHECK_INTERVAL = 30000; // 30 seconds
+
 async function sendAlert(message) {
   await fetch("https://api.pushover.net/1/messages.json", {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
       token: PUSHOVER_TOKEN,
       user: PUSHOVER_USER,
       message
@@ -16,35 +18,25 @@ async function sendAlert(message) {
   });
 }
 
-async function checkProducts() {
-  console.log("🫀 Heartbeat — checking products");
+async function checkStock() {
+  console.log("Checking URLs at", new Date().toLocaleTimeString());
 
   for (const url of URLS) {
     try {
-      console.log("Checking:", url);
-
-      const res = await fetch(url, {
-        headers: {
-          "Cache-Control": "no-cache"
-        }
-      });
-
+      const res = await fetch(url);
       const text = await res.text();
 
-      if (!text.includes("Sold Out")) {
-        console.log("🚨 POSSIBLE RESTOCK:", url);
-        await sendAlert("🚨 Pokemon restock detected: " + url);
-      } else {
-        console.log("Still sold out:", url);
+      if (!text.toLowerCase().includes("sold out")) {
+        console.log("Possible stock detected:", url);
+        await sendAlert(`🚨 Possible stock: ${url}`);
       }
-
     } catch (err) {
       console.log("Error checking:", url);
     }
   }
 }
 
-console.log("🚀 Pokemon Monitor started");
+setInterval(checkStock, CHECK_INTERVAL);
 
-setInterval(checkProducts, 15000);
-checkProducts();
+console.log("Monitor running...");
+checkStock();
