@@ -1,42 +1,66 @@
 import fetch from "node-fetch";
 
-const PUSHOVER_USER = process.env.PUSHOVER_USER;
 const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
-const URLS = process.env.URLS.split("|");
+const PUSHOVER_USER = process.env.PUSHOVER_USER;
 
-const CHECK_INTERVAL = 30000; // 30 seconds
+const urls = process.env.URLS.split("|");
+
+const lastState = {};
 
 async function sendAlert(message) {
   await fetch("https://api.pushover.net/1/messages.json", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
       token: PUSHOVER_TOKEN,
       user: PUSHOVER_USER,
-      message
+      message,
+      title: "Pokemon Monitor"
     })
   });
 }
 
-async function checkStock() {
-  console.log("Checking URLs at", new Date().toLocaleTimeString());
-
-  for (const url of URLS) {
-    try {
-      const res = await fetch(url);
-      const text = await res.text();
-
-      if (!text.toLowerCase().includes("sold out")) {
-        console.log("Possible stock detected:", url);
-        await sendAlert(`🚨 Possible stock: ${url}`);
+async function checkUrl(url) {
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0"
       }
-    } catch (err) {
-      console.log("Error checking:", url);
+    });
+
+    const text = await res.text();
+
+    const inStock =
+      text.includes("Add to Cart") &&
+      !text.includes("Sold Out") &&
+      !text.includes("Out of Stock");
+
+    if (lastState[url] === undefined) {
+      lastState[url] = inStock;
+      return;
     }
+
+    if (inStock && !lastState[url]) {
+      await sendAlert(`🚨 HIGH CONFIDENCE STOCK: ${url}`);
+    }
+
+    lastState[url] = inStock;
+
+  } catch (err) {
+    console.log("Error checking", url);
   }
 }
 
-setInterval(checkStock, CHECK_INTERVAL);
+async function run() {
+  console.log("High confidence monitor running...");
 
-console.log("Monitor running...");
-checkStock();
+  while (true) {
+    for (const url of urls) {
+      await checkUrl(url);
+    }
+
+    await new Promise(r => setTimeout(r, 15000));
+  }
+}
+
+run();
