@@ -1,83 +1,55 @@
 import fetch from "node-fetch";
 
-const USER = process.env.PUSHOVER_USER;
-const TOKEN = process.env.PUSHOVER_TOKEN;
+const PUSHOVER_USER = process.env.PUSHOVER_USER;
+const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
 const URLS = process.env.URLS.split("|");
 
-const HOME = "https://www.pokemoncenter.com/";
+console.log("🚀 Pokemon Monitor started — checking every 15 seconds");
 
-async function notify(title, message, url="") {
-  await fetch("https://api.pushover.net/1/messages.json", {
-    method: "POST",
-    headers: {"Content-Type":"application/x-www-form-urlencoded"},
-    body: new URLSearchParams({
-      token: TOKEN,
-      user: USER,
-      title,
-      message,
-      ...(url ? { url } : {})
-    })
-  });
-}
+async function sendAlert(message) {
+  try {
+    await fetch("https://api.pushover.net/1/messages.json", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        token: PUSHOVER_TOKEN,
+        user: PUSHOVER_USER,
+        message: message,
+        title: "Pokemon Center Alert 🚨"
+      })
+    });
 
-async function getHTML(url) {
-  const res = await fetch(url, {
-    headers: { "user-agent": "Mozilla/5.0" },
-    redirect: "follow"
-  });
-  return await res.text();
-}
-
-function queueDetected(html) {
-  const t = html.toLowerCase();
-  return t.includes("queue-it") || t.includes("waiting room") || t.includes("you are now in line");
-}
-
-function inStock(html) {
-  const t = html.toLowerCase();
-  return t.includes("add to cart") && !t.includes("sold out");
-}
-
-let queueActive = false;
-const lastStatus = new Map();
-
-async function loop() {
-  console.log("Monitor running…");
-
-  while (true) {
-    try {
-      const homeHTML = await getHTML(HOME);
-      const q = queueDetected(homeHTML);
-
-      if (q && !queueActive) {
-        queueActive = true;
-        console.log("QUEUE DETECTED");
-        await notify("🚨 Queue live", "Pokemon Center waiting room detected", HOME);
-      }
-
-      if (!q && queueActive) {
-        queueActive = false;
-        await notify("✅ Queue cleared", "Queue appears to be gone", HOME);
-      }
-    } catch {}
-
-    for (const url of URLS) {
-      try {
-        const html = await getHTML(url);
-        const stock = inStock(html);
-        const prev = lastStatus.get(url);
-
-        lastStatus.set(url, stock);
-
-        if (prev === false && stock === true) {
-          console.log("RESTOCK:", url);
-          await notify("🎯 RESTOCK", url, url);
-        }
-      } catch {}
-    }
-
-    await new Promise(r => setTimeout(r, 8000 + Math.random()*2000));
+    console.log("📲 Alert sent:", message);
+  } catch (err) {
+    console.error("❌ Alert error:", err);
   }
 }
 
-loop();
+async function checkStock() {
+  console.log("🫀 Heartbeat — checking products at", new Date().toLocaleTimeString());
+
+  for (const url of URLS) {
+    try {
+      console.log("🔎 Checking:", url);
+
+      const res = await fetch(url);
+      const text = await res.text();
+
+      if (
+        !text.toLowerCase().includes("out of stock") &&
+        !text.toLowerCase().includes("sold out")
+      ) {
+        console.log("🔥 POSSIBLE RESTOCK:", url);
+        await sendAlert(`RESTOCK POSSIBLE: ${url}`);
+      } else {
+        console.log("🟢 Still out of stock");
+      }
+
+    } catch (err) {
+      console.error("⚠️ Error checking", url, err);
+    }
+  }
+}
+
+setInterval(checkStock, 15000);
+checkStock();
