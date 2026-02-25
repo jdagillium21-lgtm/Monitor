@@ -56,7 +56,7 @@ async function loop() {
       await checkURL(url);
     }
 
-  }, 60000); // every 60 seconds
+  }, 20000); // ✅ 20 seconds
 }
 
 loop();
