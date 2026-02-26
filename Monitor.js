@@ -29,33 +29,26 @@ async function checkURL(url) {
     console.log("🔎 Checking:", url);
 
     const res = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0"
-      },
+      headers: { "User-Agent": "Mozilla/5.0" },
       timeout: 15000
     });
 
     const text = await res.text();
 
-    // Queue detection
-    if (text.includes("waiting room") || text.includes("queue")) {
-      console.log("🟡 Queue detected:", url);
-      return;
-    }
-
     const inStock =
       !text.includes("Out of Stock") &&
       !text.includes("Sold out");
 
+    console.log("📦 Status:", inStock ? "IN STOCK" : "OUT OF STOCK");
+
     if (lastStatus[url] === undefined) {
       lastStatus[url] = inStock;
-      console.log("📊 Initial status:", inStock ? "In Stock" : "Out of Stock");
       return;
     }
 
     if (inStock && !lastStatus[url]) {
-      console.log("🔥 HIGH CONFIDENCE STOCK:", url);
-      await sendAlert("🔥 HIGH CONFIDENCE STOCK: " + url);
+      console.log("🔥 STOCK FLIP DETECTED:", url);
+      await sendAlert("🔥 STOCK FLIP DETECTED: " + url);
     }
 
     lastStatus[url] = inStock;
