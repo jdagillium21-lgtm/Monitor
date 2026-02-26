@@ -6,6 +6,10 @@ const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
 
 let lastStatus = {};
 
+function randomDelay() {
+  return Math.floor(Math.random() * (26000 - 18000 + 1)) + 18000;
+}
+
 async function sendAlert(message) {
   await fetch("https://api.pushover.net/1/messages.json", {
     method: "POST",
@@ -22,8 +26,22 @@ async function sendAlert(message) {
 
 async function checkURL(url) {
   try {
-    const res = await fetch(url, { timeout: 15000 });
+    console.log("🔎 Checking:", url);
+
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0"
+      },
+      timeout: 15000
+    });
+
     const text = await res.text();
+
+    // Queue detection
+    if (text.includes("waiting room") || text.includes("queue")) {
+      console.log("🟡 Queue detected:", url);
+      return;
+    }
 
     const inStock =
       !text.includes("Out of Stock") &&
@@ -31,6 +49,7 @@ async function checkURL(url) {
 
     if (lastStatus[url] === undefined) {
       lastStatus[url] = inStock;
+      console.log("📊 Initial status:", inStock ? "In Stock" : "Out of Stock");
       return;
     }
 
@@ -49,14 +68,17 @@ async function checkURL(url) {
 async function loop() {
   console.log("🚀 Monitor running...");
 
-  setInterval(async () => {
-    console.log("❤️ Heartbeat — monitor alive —", new Date().toLocaleTimeString());
+  async function runCycle() {
+    console.log("❤️ Heartbeat —", new Date().toLocaleTimeString());
 
     for (const url of URLS) {
       await checkURL(url);
     }
 
-  }, 20000); // ✅ 20 seconds
+    setTimeout(runCycle, randomDelay());
+  }
+
+  runCycle();
 }
 
 loop();
